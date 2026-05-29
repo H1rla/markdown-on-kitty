@@ -59,6 +59,28 @@ def fibonacci(n: int) -> int:
 | H2   |   28px | スカイブルー |
 | 本文 |   14px | グレー |
 
+## 数式（KaTeX / MathJax）
+
+インライン数式は $e^{i\pi} + 1 = 0$ のように書けます。ブロック数式は次の通り：
+
+$$
+\int_{0}^{1} x^2 \, dx = \frac{1}{3}
+$$
+
+$$
+\sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+$$
+
+## Mermaid 図
+
+```mermaid
+flowchart LR
+    A[Markdown] --> B[parser]
+    B --> C[renderer]
+    C --> D[Kitty Protocol]
+    D --> E((Terminal))
+```
+
 ## 水平線
 
 ---

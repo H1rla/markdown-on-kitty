@@ -1,0 +1,11 @@
+{
+  "name": "mdview-external",
+  "description": "Optional Node renderers for mdview (math via MathJax v3, diagrams via mermaid-cli)",
+  "private": true,
+  "dependencies": {
+    "mathjax-full": "^3.2.1"
+  },
+  "optionalDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.0.0"
+  }
+}

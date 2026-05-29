@@ -18,6 +18,8 @@ PNG を Kitty Graphics Protocol で貼り付ける。** これにより h1 と h
 - 引用 / リスト / 順序付きリスト / ネスト / タスクリスト（チェックボックス）
 - テーブル（ヘッダ背景・alt 行・セル整列・罫線）
 - 水平線 / ローカル画像（リサイズ＋キャプション）
+- **数式**（`$...$` / `$$...$$`）を Node の数式エンジンで画像化
+- **Mermaid 図**（` ```mermaid `）を mermaid-cli で画像化
 - スクロール、TOC ペイン、インクリメンタル検索、ステータスバー
 - ファイル変更のホットリロード（watchfiles）
 - リサイズ追従（SIGWINCH）
@@ -52,6 +54,28 @@ pip install mistune pillow watchfiles wcwidth pygments
 
 > `pycairo` / `PyGObject` はディストリのパッケージから入れるのが確実です。
 > pip で入れる場合は `girepository` と `cairo` の開発ヘッダが必要です。
+
+### 数式・Mermaid（任意 / Node.js が必要）
+
+数式と Mermaid 図は外部の Node ツールに描画を委譲します。**未導入でも動作し、その場合は
+ソースを装飾ブロックとして表示します**（フォールバック）。実際の図・数式にするには：
+
+```bash
+# 数式: MathJax v3（SVG 出力エンジン）。mdview/ 直下に入れると自動で解決されます。
+cd mdview && npm install mathjax-full && cd ..
+
+# Mermaid: mermaid-cli（mmdc を PATH に通す）
+npm install -g @mermaid-js/mermaid-cli
+```
+
+- 数式は同梱の `mdview/tex2svg.mjs`（MathJax v3）で TeX→SVG 変換し、cairosvg で PNG 化します。
+  - KaTeX 本体は HTML 出力のみで画像化できないため、Node ベースの SVG 出力エンジンとして
+    MathJax v3 を採用しています（出力品質は KaTeX と同等のベクター数式）。
+  - `mathjax-full` をグローバル導入した場合は `npm root -g` を自動探索します。任意の場所に
+    入れた場合は `MDVIEW_NODE_PATH` でモジュール解決パスを指定できます。
+- `$$...$$` / ` ```math ` のブロック数式は中央寄せの画像として表示されます。
+- インライン `$...$` は装飾テキストとして表示します（行内画像埋め込みは非対応）。
+- Mermaid の実行ファイル名は環境変数 `MDVIEW_MMDC` で上書きできます。
 
 ---
 
@@ -109,7 +133,9 @@ sample.md        # 全要素を含む確認用サンプル
 
 ## 設計メモ
 
-- 描画はすべて Cairo/Pango で完結（`curses`・外部コマンド非依存、Sixel 不使用）。
+- 本文描画はすべて Cairo/Pango で完結（`curses` 不使用、Sixel 不使用）。
+  数式・Mermaid のみ、純 Python で描画できないため任意の Node ツールに委譲する
+  （未導入時はフォールバック表示）。
 - 全ページを 1 枚の PNG にレンダリングし、ビューポート分を Pillow で切り出して送信する。
 - ステータスバー・TOC は毎フレーム合成して 1 枚の画像として貼り付ける。
 - フォント未インストール時はフォールバックし、`stderr` に警告を出す。

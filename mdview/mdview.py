@@ -101,7 +101,9 @@ class App:
 
         import io
         buf = io.BytesIO()
-        frame.convert("RGB").save(buf, format="PNG")
+        # スクロール時は毎フレーム再エンコードするため、圧縮は最速設定にする
+        # （ローカル端末への転送なのでサイズより CPU を優先）。
+        frame.convert("RGB").save(buf, format="PNG", compress_level=1)
         return buf.getvalue()
 
     def _statusbar_text(self, total, content_h) -> str:
@@ -210,49 +212,73 @@ def run_interactive(filepath: str):
 
             pw, ph = kitty.get_terminal_pixel_size()
             content_h = max(1, ph - LAYOUT["status_bar_height"])
-            total = app.result.total_height
 
-            if app.search_mode:
-                if handle_search_key(app, key):
-                    app.search_mode = False
-                    if app.match_positions:
-                        app.match_index = -1
-                        app.jump_to_match(1, content_h)
+            # キー入力のコアレッシング: j/k を押しっぱなしにしたとき、
+            # キューに溜まった分をまとめて状態に反映してから 1 回だけ再描画する。
+            # 毎キーごとに重い再描画をしていたのが「もっさり感」の主因なので、
+            # これで体感速度が大きく改善する。
+            keys = [key]
+            while True:
+                nxt = keyinput.read_key(timeout=0)
+                if nxt is None:
+                    break
+                keys.append(nxt)
+
+            need_redraw = False
+            for k in keys:
+                action = process_key(app, k, content_h)
+                if action == "quit":
+                    return
+                if action == "redraw":
+                    need_redraw = True
+            if need_redraw:
                 redraw()
-                continue
-
-            step = app.viewport.scroll_step
-            if key in ("j", "down"):
-                app.viewport.scroll(step, total, content_h)
-            elif key in ("k", "up"):
-                app.viewport.scroll(-step, total, content_h)
-            elif key in ("d", "halfdown", "pagedown"):
-                app.viewport.scroll(content_h // 2, total, content_h)
-            elif key in ("u", "halfup", "pageup"):
-                app.viewport.scroll(-content_h // 2, total, content_h)
-            elif key in ("g", "home"):
-                app.viewport.y_offset = 0
-            elif key in ("G", "end"):
-                app.viewport.y_offset = max(0, total - content_h)
-            elif key == "r":
-                app.load()
-                app.rerender(app.canvas_width)
-            elif key == "t":
-                app.show_toc = not app.show_toc
-            elif key == "/":
-                app.search_mode = True
-                app.search_query = ""
-            elif key == "n":
-                app.jump_to_match(1, content_h)
-            elif key == "N":
-                app.jump_to_match(-1, content_h)
-            elif key == "q":
-                break
-            else:
-                continue
-            redraw()
     finally:
         cleanup()
+
+
+def process_key(app: App, key: str, content_h: int) -> str:
+    """1 キーを状態に反映する。'quit' / 'redraw' / 'none' を返す。"""
+    total = app.result.total_height
+
+    if app.search_mode:
+        if handle_search_key(app, key):
+            app.search_mode = False
+            if app.match_positions:
+                app.match_index = -1
+                app.jump_to_match(1, content_h)
+        return "redraw"
+
+    step = app.viewport.scroll_step
+    if key in ("j", "down"):
+        app.viewport.scroll(step, total, content_h)
+    elif key in ("k", "up"):
+        app.viewport.scroll(-step, total, content_h)
+    elif key in ("d", "halfdown", "pagedown"):
+        app.viewport.scroll(content_h // 2, total, content_h)
+    elif key in ("u", "halfup", "pageup"):
+        app.viewport.scroll(-content_h // 2, total, content_h)
+    elif key in ("g", "home"):
+        app.viewport.y_offset = 0
+    elif key in ("G", "end"):
+        app.viewport.y_offset = max(0, total - content_h)
+    elif key == "r":
+        app.load()
+        app.rerender(app.canvas_width)
+    elif key == "t":
+        app.show_toc = not app.show_toc
+    elif key == "/":
+        app.search_mode = True
+        app.search_query = ""
+    elif key == "n":
+        app.jump_to_match(1, content_h)
+    elif key == "N":
+        app.jump_to_match(-1, content_h)
+    elif key == "q":
+        return "quit"
+    else:
+        return "none"
+    return "redraw"
 
 
 def handle_search_key(app: App, key: str) -> bool:

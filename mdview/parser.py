@@ -24,6 +24,7 @@ class Span:
     code: bool = False
     strike: bool = False
     link: Optional[str] = None   # リンク URL（None ならリンクでない）
+    math: bool = False           # True なら text は TeX ソース（インライン数式）
 
 
 # --------------------------------------------------------------------------
@@ -90,6 +91,18 @@ class Image:
     type: str = "image"
 
 
+@dataclass
+class MathBlock:
+    latex: str
+    type: str = "math_block"
+
+
+@dataclass
+class Mermaid:
+    code: str
+    type: str = "mermaid"
+
+
 # --------------------------------------------------------------------------
 # インライン変換
 # --------------------------------------------------------------------------
@@ -122,6 +135,8 @@ def _inline_to_spans(tokens, *, bold=False, italic=False, code=False,
             url = tok.get("attrs", {}).get("url", "")
             spans += _inline_to_spans(tok.get("children"), bold=bold, italic=italic,
                                       code=code, strike=strike, link=url)
+        elif ttype == "inline_math":
+            spans.append(Span(tok.get("raw", ""), math=True))
         elif ttype == "image":
             alt = _spans_text(_inline_to_spans(tok.get("children")))
             spans.append(Span(f"🖼 {alt}", italic=True, link=None))
@@ -163,14 +178,25 @@ def _convert_block(tok) -> Optional[object]:
         img = _is_single_image_para(tok)
         if img is not None:
             return img
-        return Paragraph(spans=_inline_to_spans(tok.get("children")))
+        spans = _inline_to_spans(tok.get("children"))
+        if not any(s.text.strip() for s in spans):
+            return None   # 空段落（block_math 直後などに発生）はスキップ
+        return Paragraph(spans=spans)
 
     if ttype == "block_text":
         return Paragraph(spans=_inline_to_spans(tok.get("children")))
 
+    if ttype == "block_math":
+        return MathBlock(latex=tok.get("raw", "").strip())
+
     if ttype == "block_code":
-        return CodeBlock(code=tok.get("raw", "").rstrip("\n"),
-                         lang=tok.get("attrs", {}).get("info", "") or "")
+        lang = (tok.get("attrs", {}).get("info", "") or "").strip().lower()
+        code = tok.get("raw", "").rstrip("\n")
+        if lang == "mermaid":
+            return Mermaid(code=code)
+        if lang in ("math", "latex", "katex", "tex"):
+            return MathBlock(latex=code.strip())
+        return CodeBlock(code=code, lang=lang)
 
     if ttype == "thematic_break":
         return HorizontalRule()
@@ -253,11 +279,31 @@ def _convert_blocks(tokens) -> list:
 # --------------------------------------------------------------------------
 # 公開 API
 # --------------------------------------------------------------------------
+def _inline_math(inline, m, state):
+    state.append_token({"type": "inline_math", "raw": m.group("math")})
+    return m.end()
+
+
+def _block_math(block, m, state):
+    state.append_token({"type": "block_math", "raw": m.group("math").strip()})
+    return m.end()
+
+
+def _math_plugin(md):
+    """`$...$`（インライン）と `$$...$$`（ブロック）の数式を解釈する。"""
+    md.inline.register(
+        "inline_math", r"\$(?!\s)(?P<math>.+?)(?<!\s)\$", _inline_math, before="link")
+    md.block.register(
+        "block_math",
+        r"^ {0,3}\$\$[ \t]*\n(?P<math>(?:[^\n]*\n)+?) {0,3}\$\$[ \t]*$",
+        _block_math, before="fenced_code")
+
+
 def parse(text: str) -> list:
     """Markdown 文字列 → 正規化 Node リスト。"""
     md = mistune.create_markdown(
         renderer=None,
-        plugins=["table", "strikethrough", "task_lists", "url"],
+        plugins=["table", "strikethrough", "task_lists", "url", _math_plugin],
     )
     tokens = md(text)
     return _convert_blocks(tokens)

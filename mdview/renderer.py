@@ -25,6 +25,7 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Pango, PangoCairo  # noqa: E402
 from PIL import Image  # noqa: E402
 
+import external  # noqa: E402
 import layout as L  # noqa: E402
 from theme import FONT, FONT_FALLBACK, LAYOUT, SIZE, THEME  # noqa: E402
 
@@ -127,6 +128,12 @@ class Renderer:
         return lay
 
     def _span_markup(self, span, *, base_color, base_bold) -> str:
+        if span.math:
+            # インライン数式はテキストとして装飾表示する（画像埋め込みは行レイアウトの
+            # 都合で行わない）。本格的な数式表示はブロック数式（$$...$$）を使う。
+            return (f'<span foreground="{_rgb_hex(THEME["math_inline"])}" '
+                    f'style="italic" font_family="{html.escape(self.f_code, quote=True)}">'
+                    f'{html.escape(span.text)}</span>')
         text = html.escape(span.text)
         attrs = []
         fg = base_color
@@ -451,6 +458,73 @@ class Renderer:
         return ih + cap_h
 
     # ------------------------------------------------------------------
+    # 数式ブロック / Mermaid（外部レンダラ）
+    # ------------------------------------------------------------------
+    def _draw_math_block(self, ctx, node, x, y, cw, draw, ctxmeta):
+        res = external.render_math(node.latex, display=True,
+                                   color_hex=_rgb_hex(THEME["math"]))
+        if res is None:
+            return self._draw_external_fallback(
+                ctx, node.latex, "math (LaTeX)", x, y, cw, draw,
+                hint="mathjax-full + Node が必要です")
+        png, disp_w, disp_h = res
+        # ブロック数式は中央寄せ
+        return self._draw_png_bytes(ctx, png, x, y, cw, disp_w, disp_h, draw,
+                                    center=True)
+
+    def _draw_mermaid(self, ctx, node, x, y, cw, draw, ctxmeta):
+        res = external.render_mermaid(node.code)
+        if res is None:
+            return self._draw_external_fallback(
+                ctx, node.code, "mermaid", x, y, cw, draw,
+                hint="mermaid-cli (mmdc) が必要です")
+        png, disp_w, disp_h = res
+        return self._draw_png_bytes(ctx, png, x, y, cw, disp_w, disp_h, draw,
+                                    center=True)
+
+    def _draw_png_bytes(self, ctx, png_bytes, x, y, cw, disp_w, disp_h, draw,
+                        *, center=False):
+        """PNG バイト列を表示する。disp_w/h を希望表示サイズとし、cw を超える場合は縮小。"""
+        scale = min(1.0, cw / disp_w) if disp_w > 0 else 1.0
+        w, h = max(1, int(disp_w * scale)), max(1, int(disp_h * scale))
+        if draw:
+            import io
+            src = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+            src = src.resize((w, h))
+            isurf = self._pil_to_surface(src)
+            ox = x + (cw - w) / 2 if center else x
+            ctx.save()
+            ctx.set_source_surface(isurf, ox, y)
+            ctx.paint()
+            ctx.restore()
+        return h
+
+    def _draw_external_fallback(self, ctx, source, label, x, y, cw, draw, *, hint):
+        """外部ツール未導入時: ソースを装飾ブロックで表示する。"""
+        pad = LAYOUT["code_block_padding"]
+        badge_h = SIZE["badge"] + 8
+        inner_w = cw - 2 * pad
+        markup = (f'<span foreground="{_rgb_hex(THEME["fg_muted"])}">'
+                  f'{html.escape(source)}</span>')
+        lay = self._layout(ctx, markup, family=self.f_code,
+                           size=SIZE["code_block"], max_width=inner_w)
+        th = lay.get_pixel_extents()[1].height
+        box_h = th + 2 * pad + badge_h
+        if draw:
+            ctx.set_source_rgb(*THEME["bg_code"])
+            self._rounded_rect(ctx, x, y, cw, box_h, LAYOUT["code_block_radius"])
+            ctx.fill()
+            badge = self._layout(
+                ctx, f'<span foreground="{_rgb_hex(THEME["fg_muted"])}">'
+                     f'{html.escape(label)}  —  {html.escape(hint)}</span>',
+                family=self.f_code, size=SIZE["badge"])
+            ctx.move_to(x + pad, y + 4)
+            PangoCairo.show_layout(ctx, badge)
+            ctx.move_to(x + pad, y + pad + badge_h)
+            PangoCairo.show_layout(ctx, lay)
+        return box_h
+
+    # ------------------------------------------------------------------
     # 共通描画ユーティリティ
     # ------------------------------------------------------------------
     def _hline(self, ctx, x, y, w, color, alpha):
@@ -477,10 +551,14 @@ class Renderer:
 
     @staticmethod
     def _surface_to_pil(surface: cairo.ImageSurface) -> Image.Image:
-        buf = io.BytesIO()
-        surface.write_to_png(buf)
-        buf.seek(0)
-        return Image.open(buf).convert("RGBA")
+        # PNG 経由のラウンドトリップを避け、生バッファから直接変換する。
+        # FORMAT_ARGB32 はメモリ上 little-endian の BGRA（premultiplied）。
+        surface.flush()
+        w, h = surface.get_width(), surface.get_height()
+        stride = surface.get_stride()
+        data = bytes(surface.get_data())
+        img = Image.frombuffer("RGBA", (w, h), data, "raw", "BGRA", stride, 1)
+        return img.copy()
 
     # ------------------------------------------------------------------
     # メイン: ドキュメント描画
@@ -529,6 +607,10 @@ class Renderer:
         if t in ("heading", "paragraph"):
             return "".join(s.text for s in node.spans)
         if t == "code_block":
+            return node.code
+        if t == "math_block":
+            return node.latex
+        if t == "mermaid":
             return node.code
         if t == "list":
             return " ".join("".join(s.text for s in it.spans) for it in node.items)

@@ -4,6 +4,7 @@ Pillow
 watchfiles
 wcwidth
 Pygments
+cairosvg        # 数式(SVG)→PNG ラスタライズ用
 
 # pycairo / PyGObject はディストリのパッケージから入れること（README参照）
 #   Arch:   sudo pacman -S python-cairo python-gobject

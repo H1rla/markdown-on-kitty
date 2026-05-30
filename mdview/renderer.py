@@ -70,8 +70,13 @@ class RenderResult:
 
 
 class Renderer:
-    def __init__(self, canvas_width: int):
-        self.canvas_width = max(200, int(canvas_width))
+    def __init__(self, canvas_width: int, zoom: float = 1.0):
+        # zoom はベクター拡大率。レイアウトは「論理幅 = 端末幅 / zoom」で行い、
+        # 描画時に Cairo の座標系を zoom 倍する。これでフォントはベクターのまま
+        # 拡大され、どの倍率でも文字が滲まない（ラスタ拡大しない）。
+        self.zoom = max(0.4, min(4.0, float(zoom)))
+        self.dev_width = max(200, int(canvas_width))        # 端末ピクセル幅（デバイス）
+        self.canvas_width = max(120, round(self.dev_width / self.zoom))  # 論理幅
         self.warnings: list[str] = []
         self._resolve_fonts()
 
@@ -484,17 +489,24 @@ class Renderer:
 
     def _draw_png_bytes(self, ctx, png_bytes, x, y, cw, disp_w, disp_h, draw,
                         *, center=False):
-        """PNG バイト列を表示する。disp_w/h を希望表示サイズとし、cw を超える場合は縮小。"""
+        """PNG バイト列を表示する。disp_w/h を希望表示サイズとし、cw を超える場合は縮小。
+
+        ネイティブ解像度のまま Cairo で目標サイズへ縮尺するので、zoom と合成しても
+        デバイス解像度でラスタライズされ、滲みにくい。
+        """
         scale = min(1.0, cw / disp_w) if disp_w > 0 else 1.0
         w, h = max(1, int(disp_w * scale)), max(1, int(disp_h * scale))
         if draw:
             import io
             src = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-            src = src.resize((w, h))
             isurf = self._pil_to_surface(src)
+            sx = w / src.width if src.width else 1.0
+            sy = h / src.height if src.height else 1.0
             ox = x + (cw - w) / 2 if center else x
             ctx.save()
-            ctx.set_source_surface(isurf, ox, y)
+            ctx.translate(ox, y)
+            ctx.scale(sx, sy)
+            ctx.set_source_surface(isurf, 0, 0)
             ctx.paint()
             ctx.restore()
         return h
@@ -576,11 +588,15 @@ class Renderer:
             y += h + L.margin_bottom(node)
         total_height = max(8, int(y + LAYOUT["canvas_padding_top"]))
 
-        # --- パス2: 実描画 ---
-        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.canvas_width, total_height)
+        # --- パス2: 実描画（デバイス解像度で。座標系を zoom 倍してベクター拡大）---
+        z = self.zoom
+        dev_w = self.dev_width
+        dev_h = max(8, round(total_height * z))
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, dev_w, dev_h)
         ctx = cairo.Context(surface)
         ctx.set_source_rgb(*THEME["bg"])
         ctx.paint()
+        ctx.scale(z, z)   # 以降は論理座標で描画 → デバイスでは z 倍に拡大される
 
         meta = {"headings": []}
         match_positions = []
@@ -588,15 +604,18 @@ class Renderer:
         for node, y_top, h in positions:
             self._draw_node(ctx, node, y_top, draw=True, ctxmeta=meta)
             if q and self._node_text(node).lower().find(q) != -1:
-                match_positions.append(int(y_top))
+                match_positions.append(int(y_top * z))
                 # ハイライト矩形
                 ctx.set_source_rgba(*THEME["search_hl"], 0.22)
                 ctx.rectangle(LAYOUT["canvas_padding_x"] - 6, y_top - 2,
                               L.content_width(self.canvas_width) + 12, h + 4)
                 ctx.fill()
 
+        # 見出し位置はデバイスピクセルに換算（スクロール/TOC で使う）
+        meta["headings"] = [(lvl, txt, int(yy * z)) for lvl, txt, yy in meta["headings"]]
+
         image = self._surface_to_pil(surface)
-        return RenderResult(image=image, total_height=total_height,
+        return RenderResult(image=image, total_height=dev_h,
                             headings=meta["headings"],
                             n_matches=len(match_positions),
                             match_positions=match_positions)
@@ -626,7 +645,7 @@ class Renderer:
     # ------------------------------------------------------------------
     def render_statusbar(self, text: str) -> Image.Image:
         h = LAYOUT["status_bar_height"]
-        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.canvas_width, h)
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.dev_width, h)
         ctx = cairo.Context(surface)
         ctx.set_source_rgb(*THEME["statusbar_bg"])
         ctx.paint()

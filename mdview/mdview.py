@@ -54,6 +54,7 @@ class App:
         self.result = None
         self.nodes = []
         self.canvas_width = 0
+        self.zoom = 1.0
 
     # ---------------- ドキュメント読み込み・描画 ----------------
     def load(self):
@@ -64,10 +65,23 @@ class App:
 
     def rerender(self, canvas_width: int):
         self.canvas_width = canvas_width
-        self.renderer = Renderer(canvas_width)
+        self.renderer = Renderer(canvas_width, zoom=self.zoom)
         q = self.search_query if self.search_query else None
         self.result = self.renderer.render_document(self.nodes, q)
         self.match_positions = self.result.match_positions
+
+    def set_zoom(self, new_zoom: float, content_h: int) -> bool:
+        """ズーム率を変更して再レンダリング。スクロール位置は相対保持。"""
+        new_zoom = max(0.4, min(4.0, round(new_zoom, 2)))
+        if abs(new_zoom - self.zoom) < 1e-6:
+            return False
+        total_old = self.result.total_height if self.result else 1
+        frac = self.viewport.y_offset / total_old if total_old else 0.0
+        self.zoom = new_zoom
+        self.rerender(self.canvas_width)
+        self.viewport.y_offset = int(frac * self.result.total_height)
+        self.viewport.clamp(self.result.total_height, content_h)
+        return True
 
     # ---------------- フレーム合成 ----------------
     def compose_frame(self, view_w: int, view_h: int) -> bytes:
@@ -111,6 +125,8 @@ class App:
         pct = min(100, round(self.viewport.y_offset / max_off * 100)) if max_off else 100
         name = os.path.basename(self.filepath)
         parts = [" mdview", name, f"{pct}%", f"{self.line_count} lines"]
+        if abs(self.zoom - 1.0) > 1e-6:
+            parts.append(f"⤢{int(self.zoom * 100)}%")
         if self.search_mode:
             parts.append(f"/{self.search_query}_")
         elif self.search_query:
@@ -267,6 +283,12 @@ def process_key(app: App, key: str, content_h: int) -> str:
         app.rerender(app.canvas_width)
     elif key == "t":
         app.show_toc = not app.show_toc
+    elif key in ("+", "="):
+        app.set_zoom(app.zoom + 0.1, content_h)
+    elif key in ("-", "_"):
+        app.set_zoom(app.zoom - 0.1, content_h)
+    elif key == "0":
+        app.set_zoom(1.0, content_h)
     elif key == "/":
         app.search_mode = True
         app.search_query = ""

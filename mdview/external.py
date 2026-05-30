@@ -57,6 +57,38 @@ def _resolve_mmdc() -> str | None:
     return _TOOL_CACHE["_mmdc"]
 
 
+# puppeteer が使うブラウザ（システムの Chrome/Chromium）を探す候補
+_CHROME_NAMES = ["google-chrome-stable", "google-chrome", "chromium",
+                 "chromium-browser", "chrome"]
+_CHROME_PATHS = ["/usr/bin/google-chrome-stable", "/usr/bin/google-chrome",
+                 "/opt/google/chrome/google-chrome", "/usr/bin/chromium",
+                 "/usr/bin/chromium-browser"]
+
+
+def chrome_path() -> str | None:
+    """puppeteer に使わせるブラウザの実行パスを返す。
+
+    優先順: MDVIEW_CHROME → PUPPETEER_EXECUTABLE_PATH → PATH 上の Chrome/Chromium
+    → よくある絶対パス。
+    """
+    if "_chrome" not in _TOOL_CACHE:
+        cand = os.environ.get("MDVIEW_CHROME") or os.environ.get("PUPPETEER_EXECUTABLE_PATH")
+        if not (cand and os.path.isfile(cand)):
+            cand = None
+            for name in _CHROME_NAMES:
+                p = shutil.which(name)
+                if p:
+                    cand = p
+                    break
+            if not cand:
+                for p in _CHROME_PATHS:
+                    if os.path.isfile(p):
+                        cand = p
+                        break
+        _TOOL_CACHE["_chrome"] = cand
+    return _TOOL_CACHE["_chrome"]
+
+
 def have_mermaid() -> bool:
     return _resolve_mmdc() is not None
 
@@ -183,8 +215,14 @@ def render_mermaid(code: str, *, scale: float = 2.0):
         cfg = os.environ.get("MDVIEW_PUPPETEER_CONFIG", _PUPPETEER_CFG)
         if cfg and os.path.isfile(cfg):
             cmd += ["-p", cfg]
+        # puppeteer 同梱 chromium のダウンロードに失敗しがちなので、システムの
+        # Chrome/Chromium を使わせる（見つかった場合のみ）。
+        env = _node_env()
+        chrome = chrome_path()
+        if chrome and not env.get("PUPPETEER_EXECUTABLE_PATH"):
+            env["PUPPETEER_EXECUTABLE_PATH"] = chrome
         proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=60, env=_node_env())
+                              timeout=60, env=env)
         if not os.path.isfile(outp):
             err = (proc.stderr or proc.stdout or "").strip()
             LAST_ERROR["mermaid"] = _tail(err) or f"mmdc が失敗しました (exit {proc.returncode})"
@@ -237,6 +275,7 @@ def diagnose() -> str:
     lines.append(f"NODE_PATH       : {_node_env().get('NODE_PATH', '')}")
     lines.append(f"have_math()     : {have_math()}")
     lines.append(f"mmdc            : {_resolve_mmdc() or '見つかりません'}")
+    lines.append(f"chrome/chromium : {chrome_path() or '見つかりません (PUPPETEER_EXECUTABLE_PATH/MDVIEW_CHROME)'}")
     lines.append(f"puppeteer config: {_PUPPETEER_CFG if os.path.isfile(_PUPPETEER_CFG) else 'なし'}")
     lines.append("")
 

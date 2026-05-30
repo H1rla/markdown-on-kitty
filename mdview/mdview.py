@@ -301,12 +301,22 @@ def handle_search_key(app: App, key: str) -> bool:
 # --------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="ターミナル向け Markdown Viewer (Kitty Graphics)")
-    ap.add_argument("file", help="表示する Markdown ファイル")
+    ap.add_argument("file", nargs="?", help="表示する Markdown ファイル")
     ap.add_argument("--render", metavar="OUT.png",
                     help="対話せず全ページ PNG を出力（ヘッドレス検証用）")
     ap.add_argument("--width", type=int, default=900,
                     help="--render 時のキャンバス幅(px)。既定 900")
+    ap.add_argument("--check", action="store_true",
+                    help="数式/Mermaid の外部ツール導入状況を診断して終了")
     args = ap.parse_args()
+
+    if args.check:
+        import external
+        print(external.diagnose())
+        return
+
+    if not args.file:
+        ap.error("ファイルを指定してください（または --check）")
 
     if not os.path.isfile(args.file):
         print(f"エラー: ファイルが見つかりません: {args.file}", file=sys.stderr)

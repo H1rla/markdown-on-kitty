@@ -105,18 +105,29 @@ _SUPERSAMPLE = 3.0  # 高精細化のための内部スケール
 
 def render_math(latex: str, *, display: bool, color_hex: str):
     """TeX 数式を PNG にして (png_bytes, disp_w, disp_h) を返す。失敗時 None。"""
-    if not have_math():
+    if not _HAS_CAIROSVG:
+        LAST_ERROR["math"] = "cairosvg 未インストール (pip install cairosvg)"
+        return None
+    node = _which("node")
+    if node is None:
+        LAST_ERROR["math"] = "node が見つかりません"
+        return None
+    if not os.path.isfile(_TEX2SVG):
+        LAST_ERROR["math"] = "tex2svg.mjs が見つかりません"
         return None
     ck = _key("math", latex, f"{display}:{color_hex}")
     if ck in _CACHE:
         return _CACHE[ck]
     try:
-        node = _which("node")
         out = subprocess.run(
             [node, _TEX2SVG, latex, "1" if display else "0"],
             capture_output=True, text=True, timeout=20, env=_node_env())
         m = re.search(r"(<svg.*?</svg>)", out.stdout, re.DOTALL)
         if not m:
+            err = (out.stderr or "").strip()
+            LAST_ERROR["math"] = (_tail(err) or
+                                  "SVG を生成できません。mathjax-full を導入してください "
+                                  "(cd mdview && npm install)")
             _CACHE[ck] = None
             return None
         svg = m.group(1).replace("currentColor", color_hex)
@@ -128,8 +139,10 @@ def render_math(latex: str, *, display: bool, color_hex: str):
             output_height=max(1, int(hpx * _SUPERSAMPLE)))
         result = (png, wpx, hpx)
         _CACHE[ck] = result
+        LAST_ERROR.pop("math", None)
         return result
-    except Exception:
+    except Exception as e:
+        LAST_ERROR["math"] = f"{type(e).__name__}: {e}"
         _CACHE[ck] = None
         return None
 
@@ -139,28 +152,42 @@ def _ex_attr(attr: str, svg: str):
     return float(m.group(1)) * _EX_PX if m else None
 
 
+# 直近の失敗理由（フォールバック表示・診断用）
+LAST_ERROR: dict = {}
+
+_PUPPETEER_CFG = os.path.join(_SCRIPT_DIR, "puppeteer-config.json")
+
+
 # --------------------------------------------------------------------------
 # Mermaid
 # --------------------------------------------------------------------------
 def render_mermaid(code: str, *, scale: float = 2.0):
     """Mermaid コードを PNG にして (png_bytes, disp_w, disp_h) を返す。失敗時 None。"""
-    if not have_mermaid():
+    mmdc = _resolve_mmdc()
+    if mmdc is None:
+        LAST_ERROR["mermaid"] = ("mmdc が見つかりません。"
+                                 "`npm install -g @mermaid-js/mermaid-cli` で導入してください。")
         return None
     ck = _key("mermaid", code, str(scale))
     if ck in _CACHE:
         return _CACHE[ck]
-    mmdc = _resolve_mmdc()
     tmpdir = tempfile.mkdtemp(prefix="mdview-mmd-")
     inp = os.path.join(tmpdir, "in.mmd")
     outp = os.path.join(tmpdir, "out.png")
     try:
         with open(inp, "w", encoding="utf-8") as f:
             f.write(code)
-        subprocess.run(
-            [mmdc, "-i", inp, "-o", outp, "-t", "dark",
-             "-b", "transparent", "-s", str(scale)],
-            capture_output=True, text=True, timeout=40)
+        cmd = [mmdc, "-i", inp, "-o", outp, "-t", "dark",
+               "-b", "transparent", "-s", str(scale)]
+        # puppeteer の chromium を --no-sandbox 等で起動（Arch でよくある失敗対策）。
+        cfg = os.environ.get("MDVIEW_PUPPETEER_CONFIG", _PUPPETEER_CFG)
+        if cfg and os.path.isfile(cfg):
+            cmd += ["-p", cfg]
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=60, env=_node_env())
         if not os.path.isfile(outp):
+            err = (proc.stderr or proc.stdout or "").strip()
+            LAST_ERROR["mermaid"] = _tail(err) or f"mmdc が失敗しました (exit {proc.returncode})"
             _CACHE[ck] = None
             return None
         with open(outp, "rb") as f:
@@ -172,8 +199,14 @@ def render_mermaid(code: str, *, scale: float = 2.0):
         disp_w, disp_h = im.width / scale, im.height / scale
         result = (png, disp_w, disp_h)
         _CACHE[ck] = result
+        LAST_ERROR.pop("mermaid", None)
         return result
-    except Exception:
+    except subprocess.TimeoutExpired:
+        LAST_ERROR["mermaid"] = "mmdc がタイムアウトしました（chromium 起動に失敗?）"
+        _CACHE[ck] = None
+        return None
+    except Exception as e:
+        LAST_ERROR["mermaid"] = f"{type(e).__name__}: {e}"
         _CACHE[ck] = None
         return None
     finally:
@@ -181,3 +214,45 @@ def render_mermaid(code: str, *, scale: float = 2.0):
             shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
             pass
+
+
+def _tail(text: str, n: int = 240) -> str:
+    text = (text or "").strip()
+    return text[-n:] if len(text) > n else text
+
+
+def diagnose() -> str:
+    """ツールの導入状況と Mermaid のテスト描画結果を文字列で返す（--check 用）。"""
+    lines = ["mdview 外部レンダラ診断", "=" * 40]
+    node = _which("node")
+    lines.append(f"node            : {node or '見つかりません'}")
+    if node:
+        try:
+            v = subprocess.run([node, "-v"], capture_output=True, text=True, timeout=10)
+            lines.append(f"node version    : {v.stdout.strip()}")
+        except Exception as e:
+            lines.append(f"node version    : 取得失敗 ({e})")
+    lines.append(f"cairosvg        : {'OK' if _HAS_CAIROSVG else '未インストール (pip install cairosvg)'}")
+    lines.append(f"tex2svg.mjs     : {'あり' if os.path.isfile(_TEX2SVG) else 'なし'}")
+    lines.append(f"NODE_PATH       : {_node_env().get('NODE_PATH', '')}")
+    lines.append(f"have_math()     : {have_math()}")
+    lines.append(f"mmdc            : {_resolve_mmdc() or '見つかりません'}")
+    lines.append(f"puppeteer config: {_PUPPETEER_CFG if os.path.isfile(_PUPPETEER_CFG) else 'なし'}")
+    lines.append("")
+
+    # 数式テスト
+    lines.append("[数式テスト] $x^2$ を描画 ...")
+    r = render_math("x^2", display=True, color_hex="#ffffff")
+    if r:
+        lines.append(f"  OK ({len(r[0])} bytes)")
+    else:
+        lines.append(f"  失敗: {LAST_ERROR.get('math', '不明')}")
+
+    # Mermaid テスト
+    lines.append("[Mermaid テスト] flowchart を描画 ...")
+    r = render_mermaid("flowchart LR\n  A-->B")
+    if r:
+        lines.append(f"  OK ({len(r[0])} bytes)")
+    else:
+        lines.append(f"  失敗: {LAST_ERROR.get('mermaid', '不明')}")
+    return "\n".join(lines)

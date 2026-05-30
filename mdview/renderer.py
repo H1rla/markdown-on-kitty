@@ -464,9 +464,9 @@ class Renderer:
         res = external.render_math(node.latex, display=True,
                                    color_hex=_rgb_hex(THEME["math"]))
         if res is None:
+            hint = external.LAST_ERROR.get("math", "mathjax-full + Node が必要です")
             return self._draw_external_fallback(
-                ctx, node.latex, "math (LaTeX)", x, y, cw, draw,
-                hint="mathjax-full + Node が必要です")
+                ctx, node.latex, "math (LaTeX)", x, y, cw, draw, hint=hint)
         png, disp_w, disp_h = res
         # ブロック数式は中央寄せ
         return self._draw_png_bytes(ctx, png, x, y, cw, disp_w, disp_h, draw,
@@ -475,9 +475,9 @@ class Renderer:
     def _draw_mermaid(self, ctx, node, x, y, cw, draw, ctxmeta):
         res = external.render_mermaid(node.code)
         if res is None:
+            hint = external.LAST_ERROR.get("mermaid", "mermaid-cli (mmdc) が必要です")
             return self._draw_external_fallback(
-                ctx, node.code, "mermaid", x, y, cw, draw,
-                hint="mermaid-cli (mmdc) が必要です")
+                ctx, node.code, "mermaid", x, y, cw, draw, hint=hint)
         png, disp_w, disp_h = res
         return self._draw_png_bytes(ctx, png, x, y, cw, disp_w, disp_h, draw,
                                     center=True)

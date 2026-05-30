@@ -75,7 +75,20 @@ npm install -g @mermaid-js/mermaid-cli
     入れた場合は `MDVIEW_NODE_PATH` でモジュール解決パスを指定できます。
 - `$$...$$` / ` ```math ` のブロック数式は中央寄せの画像として表示されます。
 - インライン `$...$` は装飾テキストとして表示します（行内画像埋め込みは非対応）。
-- Mermaid の実行ファイル名は環境変数 `MDVIEW_MMDC` で上書きできます。
+- Mermaid は同梱の `mdview/puppeteer-config.json`（`--no-sandbox` 等）を自動で渡すため、
+  Arch でよくある chromium のサンドボックス起動失敗を回避します。設定は
+  `MDVIEW_PUPPETEER_CONFIG`、実行ファイル名は `MDVIEW_MMDC` で上書きできます。
+
+#### 導入状況の診断
+
+数式や Mermaid が画像にならずソースのまま表示される場合は、次で原因を確認できます：
+
+```bash
+python mdview/mdview.py --check
+```
+
+node / cairosvg / mmdc の検出状況と、実際にテスト描画を行った結果（失敗時はエラー内容）を
+表示します。
 
 ---
 

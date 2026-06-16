@@ -9,7 +9,7 @@ syntax highlighting, and math/diagrams become real images.
 
 ![demo](docs/demo.png)
 
-[![CI](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml)
+[![CI](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -79,8 +79,8 @@ The quickest path is the bundled installer, which doubles as a dependency doctor
 command to fix it, and installs the Python packages into a local `.venv`):
 
 ```bash
-git clone https://github.com/H1rla/md_on_kitty
-cd md_on_kitty
+git clone https://github.com/H1rla/markdown-on-kitty
+cd markdown-on-kitty
 ./install.sh            # check + set up .venv + create a launcher
 ./install.sh --check-only   # just report status, change nothing
 ```

@@ -10,7 +10,7 @@ PNG を Kitty Graphics Protocol で貼り付ける。** これにより h1 と h
 
 ![demo](docs/demo.png)
 
-[![CI](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml)
+[![CI](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -70,8 +70,8 @@ mdview は**本文テキストごと 1 枚の画像にラスタライズ**する
 パッケージはローカル `.venv` に導入する：
 
 ```bash
-git clone https://github.com/H1rla/md_on_kitty
-cd md_on_kitty
+git clone https://github.com/H1rla/markdown-on-kitty
+cd markdown-on-kitty
 ./install.sh            # 診断 + .venv 構築 + ランチャ生成
 ./install.sh --check-only   # 変更せず状態だけ表示
 ```

@@ -67,7 +67,7 @@ local path as an image; the result is only ever drawn to your own screen.
 ## Reporting a vulnerability
 
 Please report security issues privately via GitHub
-[Security Advisories](https://github.com/H1rla/md_on_kitty/security/advisories/new)
+[Security Advisories](https://github.com/H1rla/markdown-on-kitty/security/advisories/new)
 on this repository, rather than opening a public issue. A best‑effort response
 can be expected; this is a small, volunteer‑maintained project.
 

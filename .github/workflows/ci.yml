@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pycairo / PyGObject / Pango are C extensions; install them from apt and
+      # use the system Python with a --system-site-packages venv (same approach
+      # as install.sh), rather than pip-building them.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-venv python3-gi python3-gi-cairo python3-cairo \
+            gir1.2-pango-1.0 libcairo2 libpango-1.0-0 \
+            fonts-noto-cjk fonts-dejavu
+
+      - name: Create venv and install Python packages
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt ruff pytest
+
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check mdview/ tests/
+
+      - name: Tests (pytest)
+        run: .venv/bin/pytest
+
+      - name: Headless render smoke
+        run: .venv/bin/python mdview/mdview.py sample.md --render /tmp/out.png --width 900
+
+      - name: Dependency doctor (install.sh)
+        run: bash install.sh --check-only

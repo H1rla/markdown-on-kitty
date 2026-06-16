@@ -1,0 +1,20 @@
+# Tooling configuration only (lint + tests).
+#
+# mdview is intentionally run as a script (`python mdview/mdview.py`), not
+# installed as a package, so this file deliberately has no [build-system] and no
+# entry points — it only configures ruff and pytest.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Pyflakes (real bugs: undefined / unused names) + pycodestyle errors/warnings.
+# E501 (line length) is disabled: the source has many intentional long lines,
+# including Japanese comments.
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

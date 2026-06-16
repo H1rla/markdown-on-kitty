@@ -259,39 +259,96 @@ def _tail(text: str, n: int = 240) -> str:
     return text[-n:] if len(text) > n else text
 
 
+def _check_import(modname: str):
+    """モジュールが import 可能かを (ok, error_text) で返す。"""
+    try:
+        __import__(modname)
+        return True, ""
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 def diagnose() -> str:
-    """ツールの導入状況と Mermaid のテスト描画結果を文字列で返す（--check 用）。"""
-    lines = ["mdview 外部レンダラ診断", "=" * 40]
+    """導入状況（Python 依存 / フォント / 外部レンダラ）を診断して文字列で返す（--check 用）。
+
+    インストール後のランタイム doctor。色は付けず ✓/✗/⚠ で表す（パイプ/リダイレクト耐性）。
+    """
+    lines = ["mdview 診断 (--check)", "=" * 44, ""]
+
+    # --- Python 依存 ---
+    lines.append("[Python 依存]")
+    deps = [
+        ("mistune", "mistune"),
+        ("PIL", "Pillow"),
+        ("cairo", "pycairo (Arch: python-cairo / Debian: python3-gi-cairo)"),
+        ("gi", "PyGObject (Arch: python-gobject / Debian: python3-gi)"),
+        ("watchfiles", "watchfiles"),
+        ("wcwidth", "wcwidth"),
+        ("pygments", "Pygments"),
+        ("cairosvg", "cairosvg（数式の SVG→PNG 用・任意）"),
+    ]
+    for mod, hint in deps:
+        ok, err = _check_import(mod)
+        if ok:
+            lines.append(f"  ✓ {mod}")
+        else:
+            lines.append(f"  ✗ {mod:<11} ← {hint} が必要 ({err})")
+    try:
+        import gi as _gi
+        _gi.require_version("Pango", "1.0")
+        _gi.require_version("PangoCairo", "1.0")
+        from gi.repository import Pango, PangoCairo  # noqa: F401
+        lines.append("  ✓ Pango/PangoCairo (gobject-introspection)")
+    except Exception as e:
+        lines.append(f"  ✗ Pango/PangoCairo ← gir1.2-pango-1.0 等が必要 ({e})")
+
+    # --- フォント解決 ---
+    lines.append("")
+    lines.append("[フォント解決]")
+    try:
+        from renderer import _available_font_families
+        from theme import FONT
+        avail = _available_font_families()
+        for role, name in FONT.items():
+            mark = "✓" if name in avail else "⚠"
+            tail = "" if name in avail else " （なし → フォールバック）"
+            lines.append(f"  {mark} {role:<8}: {name}{tail}")
+    except Exception as e:
+        lines.append(f"  ✗ フォント検査に失敗: {e}")
+
+    # --- 外部レンダラ（数式 / Mermaid・任意）---
+    lines.append("")
+    lines.append("[外部レンダラ (数式 / Mermaid・任意)]")
     node = _which("node")
-    lines.append(f"node            : {node or '見つかりません'}")
+    lines.append(f"  {'✓' if node else '⚠'} node           : {node or '見つかりません（数式/Mermaid を使うなら必要）'}")
     if node:
         try:
             v = subprocess.run([node, "-v"], capture_output=True, text=True, timeout=10)
-            lines.append(f"node version    : {v.stdout.strip()}")
+            lines.append(f"      version      : {v.stdout.strip()}")
         except Exception as e:
-            lines.append(f"node version    : 取得失敗 ({e})")
-    lines.append(f"cairosvg        : {'OK' if _HAS_CAIROSVG else '未インストール (pip install cairosvg)'}")
-    lines.append(f"tex2svg.mjs     : {'あり' if os.path.isfile(_TEX2SVG) else 'なし'}")
-    lines.append(f"NODE_PATH       : {_node_env().get('NODE_PATH', '')}")
-    lines.append(f"have_math()     : {have_math()}")
-    lines.append(f"mmdc            : {_resolve_mmdc() or '見つかりません'}")
-    lines.append(f"chrome/chromium : {chrome_path() or '見つかりません (PUPPETEER_EXECUTABLE_PATH/MDVIEW_CHROME)'}")
-    lines.append(f"puppeteer config: {_PUPPETEER_CFG if os.path.isfile(_PUPPETEER_CFG) else 'なし'}")
+            lines.append(f"      version      : 取得失敗 ({e})")
+    lines.append(f"  {'✓' if _HAS_CAIROSVG else '⚠'} cairosvg       : {'OK' if _HAS_CAIROSVG else '未インストール (pip install cairosvg)'}")
+    lines.append(f"  {'✓' if os.path.isfile(_TEX2SVG) else '✗'} tex2svg.mjs    : {'あり' if os.path.isfile(_TEX2SVG) else 'なし'}")
+    lines.append(f"  {'✓' if have_math() else '⚠'} have_math()    : {have_math()}")
+    lines.append(f"  {'✓' if _resolve_mmdc() else '⚠'} mmdc           : {_resolve_mmdc() or '見つかりません（npm install -g @mermaid-js/mermaid-cli）'}")
+    lines.append(f"    chrome/chromium: {chrome_path() or '見つかりません (PUPPETEER_EXECUTABLE_PATH/MDVIEW_CHROME)'}")
+    lines.append(f"    NODE_PATH      : {_node_env().get('NODE_PATH', '')}")
+    lines.append(f"    puppeteer cfg  : {_PUPPETEER_CFG if os.path.isfile(_PUPPETEER_CFG) else 'なし'}")
     lines.append("")
 
     # 数式テスト
-    lines.append("[数式テスト] $x^2$ を描画 ...")
+    lines.append("  数式テスト  $x^2$ を描画 ...")
     r = render_math("x^2", display=True, color_hex="#ffffff")
     if r:
-        lines.append(f"  OK ({len(r[0])} bytes)")
+        lines.append(f"    ✓ OK ({len(r[0])} bytes)")
     else:
-        lines.append(f"  失敗: {LAST_ERROR.get('math', '不明')}")
+        lines.append(f"    ✗ 失敗: {LAST_ERROR.get('math', '不明')}")
 
     # Mermaid テスト
-    lines.append("[Mermaid テスト] flowchart を描画 ...")
+    lines.append("  Mermaid テスト  flowchart を描画 ...")
     r = render_mermaid("flowchart LR\n  A-->B")
     if r:
-        lines.append(f"  OK ({len(r[0])} bytes)")
+        lines.append(f"    ✓ OK ({len(r[0])} bytes)")
     else:
-        lines.append(f"  失敗: {LAST_ERROR.get('mermaid', '不明')}")
+        lines.append(f"    ✗ 失敗: {LAST_ERROR.get('mermaid', '不明')}")
     return "\n".join(lines)

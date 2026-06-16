@@ -20,6 +20,8 @@ from renderer import Renderer
 from theme import LAYOUT
 from watcher import start_watching
 
+__version__ = "0.1.0"
+
 
 # --------------------------------------------------------------------------
 # Viewport / フレーム合成
@@ -39,8 +41,12 @@ class Viewport:
 
 
 class App:
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, *, allow_external: bool = True):
         self.filepath = filepath
+        # ローカル画像の相対パスは「開いた .md のディレクトリ」基準で解決する。
+        self.base_dir = os.path.dirname(os.path.abspath(filepath))
+        # --safe 指定時は False。Mermaid/数式の外部レンダラ起動を抑止する。
+        self.allow_external = allow_external
         self.viewport = Viewport()
         self.show_toc = False
         self.search_query = ""
@@ -65,7 +71,9 @@ class App:
 
     def rerender(self, canvas_width: int):
         self.canvas_width = canvas_width
-        self.renderer = Renderer(canvas_width, zoom=self.zoom)
+        self.renderer = Renderer(canvas_width, zoom=self.zoom,
+                                 base_dir=self.base_dir,
+                                 allow_external=self.allow_external)
         q = self.search_query if self.search_query else None
         self.result = self.renderer.render_document(self.nodes, q)
         self.match_positions = self.result.match_positions
@@ -147,8 +155,9 @@ class App:
 # --------------------------------------------------------------------------
 # オフライン描画モード
 # --------------------------------------------------------------------------
-def render_to_file(filepath: str, out_path: str, width: int):
-    app = App(filepath)
+def render_to_file(filepath: str, out_path: str, width: int,
+                   *, allow_external: bool = True):
+    app = App(filepath, allow_external=allow_external)
     app.load()
     app.rerender(width)
     for w in app.renderer.warnings:
@@ -162,8 +171,8 @@ def render_to_file(filepath: str, out_path: str, width: int):
 # --------------------------------------------------------------------------
 # 対話モード
 # --------------------------------------------------------------------------
-def run_interactive(filepath: str):
-    app = App(filepath)
+def run_interactive(filepath: str, *, allow_external: bool = True):
+    app = App(filepath, allow_external=allow_external)
     app.load()
 
     if not sys.stdout.isatty():
@@ -330,6 +339,11 @@ def main():
                     help="--render 時のキャンバス幅(px)。既定 900")
     ap.add_argument("--check", action="store_true",
                     help="数式/Mermaid の外部ツール導入状況を診断して終了")
+    ap.add_argument("--safe", "--no-external", dest="safe", action="store_true",
+                    help="外部レンダラ(Mermaid=headless Chromium / 数式=Node)を起動しない。"
+                         "信頼できない .md を開くときに使う")
+    ap.add_argument("--version", action="version",
+                    version=f"mdview {__version__}")
     args = ap.parse_args()
 
     if args.check:
@@ -344,10 +358,12 @@ def main():
         print(f"エラー: ファイルが見つかりません: {args.file}", file=sys.stderr)
         sys.exit(1)
 
+    allow_external = not args.safe
     if args.render:
-        render_to_file(args.file, args.render, args.width)
+        render_to_file(args.file, args.render, args.width,
+                       allow_external=allow_external)
     else:
-        run_interactive(args.file)
+        run_interactive(args.file, allow_external=allow_external)
 
 
 if __name__ == "__main__":

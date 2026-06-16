@@ -1,158 +1,240 @@
-# mdview — ターミナル向け Markdown Viewer（Kitty Graphics Protocol）
+# mdview — a pixel-perfect Markdown viewer for the terminal
 
-WezTerm / kitty で動作する Markdown ビューア。
+[日本語 README](README.ja.md)
 
-**ポイント：テキストを文字として端末に出力せず、すべて Cairo + Pango でピクセル描画した
-PNG を Kitty Graphics Protocol で貼り付ける。** これにより h1 と h2 で実際のフォント
-サイズが異なる VSCode レベルのリッチ表示を実現する。
+A Markdown viewer for **kitty** and **WezTerm** that renders the *whole document*
+— text included — with Cairo + Pango and pastes it into the terminal via the
+**Kitty Graphics Protocol**. Headings get real font sizes, code gets real
+syntax highlighting, and math/diagrams become real images.
 
 ![demo](docs/demo.png)
 
----
-
-## 特徴
-
-- 見出し h1〜h6 が実フォントサイズで描画される（h1=36px ゴールド / h2=28px スカイブルー …）
-- 段落のワードラップ・行間調整、**太字** / *斜体* / ~~取り消し線~~ / `インラインコード` / [リンク]()
-- コードブロック（角丸背景・言語バッジ・Pygments シンタックスハイライト）
-- 引用 / リスト / 順序付きリスト / ネスト / タスクリスト（チェックボックス）
-- テーブル（ヘッダ背景・alt 行・セル整列・罫線）
-- 水平線 / ローカル画像（リサイズ＋キャプション）
-- **数式**（`$...$` / `$$...$$`）を Node の数式エンジンで画像化
-- **Mermaid 図**（` ```mermaid `）を mermaid-cli で画像化
-- スクロール、TOC ペイン、インクリメンタル検索、ステータスバー
-- ズームイン/アウト（フォントをベクターのまま拡大するので滲まない）
-- ファイル変更のホットリロード（watchfiles）
-- リサイズ追従（SIGWINCH）
+[![CI](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/md_on_kitty/actions/workflows/ci.yml)
+![license](https://img.shields.io/badge/license-MIT-blue)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
 
 ---
 
-## 必要環境
+## Why another terminal Markdown viewer?
 
-- ターミナル: **WezTerm** または **kitty**（Kitty Graphics Protocol 対応）
-- Python 3.12+
-- フォント: Noto Sans JP（日本語）/ Fira Code（コード）
-  - 見つからない場合は Noto Sans CJK JP → DejaVu Sans などへ自動フォールバック
+Terminal Markdown tools are common, but most fall into a different category than
+this one:
+
+- **ANSI text stylers** (`glow`, `rich`, `bat`, `mdless`, …) color and embolden
+  text, but every line stays at the **terminal's fixed cell size** — an `h1` and
+  the body text are the same height.
+- **Image-protocol tools** (`mdcat`) can show *embedded images* via kitty/iTerm2/
+  sixel, but the prose itself is still terminal text.
+
+`mdview` is different: it **rasterizes the entire document, text and all**, into
+a single image. So:
+
+- `h1`/`h2`/`h3` have genuinely different font sizes (36/28/22 px), with real
+  kerning and word wrapping — closer to a VS Code preview than a TUI.
+- `$$…$$` math and ` ```mermaid ``` ` diagrams are rendered as **actual images**.
+
+The trade-offs are honest: the text is **not selectable**, you need a
+**graphics-capable terminal**, and each repaint is heavier than printing ANSI.
+If you want a fast pager, use `glow`; if you want it to *look* like a rendered
+document, use `mdview`.
 
 ---
 
-## インストール
+## Features
 
-### Arch Linux
+- Headings `h1`–`h6` at real font sizes (h1 = 36px gold, h2 = 28px sky blue, …)
+- Word-wrapped paragraphs with **bold** / *italic* / ~~strikethrough~~ /
+  `inline code` / [links]()
+- Code blocks (rounded background, language badge, Pygments syntax highlighting)
+- Blockquotes / bullet & ordered lists / nesting / task-list checkboxes
+- Tables (header shading, zebra rows, cell alignment, borders)
+- Horizontal rules / local images (resized, with captions)
+- **Math** (`$…$`, `$$…$$`) rasterized via a Node math engine
+- **Mermaid** diagrams (` ```mermaid `) via mermaid-cli
+- Scrolling, table-of-contents pane, incremental search, status bar
+- Zoom in/out (vector scaling — text stays crisp at any level)
+- Hot reload on file change (watchfiles) and resize tracking (SIGWINCH)
+- `--safe` mode to view untrusted documents without launching external renderers
+
+---
+
+## Requirements
+
+- A terminal that speaks the Kitty Graphics Protocol: **kitty** or **WezTerm**
+- **Python 3.10+**
+- System libraries (from your distro): **pycairo**, **PyGObject**, **Pango**
+- Fonts (recommended): Noto Sans CJK (Japanese), Fira Code (code) — automatic
+  fallback to DejaVu Sans / a generic monospace otherwise
+
+`pycairo` and `PyGObject` are C extensions, so installing them from your distro's
+packages is the reliable path. The installer below resolves and reports all of
+this for you.
+
+---
+
+## Install
+
+The quickest path is the bundled installer, which doubles as a dependency doctor
+(it detects your OS, reports exactly what is present/missing with the precise
+command to fix it, and installs the Python packages into a local `.venv`):
 
 ```bash
-sudo pacman -S python-cairo python-gobject noto-fonts-cjk ttf-fira-code
-pip install mistune pillow watchfiles wcwidth pygments
+git clone https://github.com/H1rla/md_on_kitty
+cd md_on_kitty
+./install.sh            # check + set up .venv + create a launcher
+./install.sh --check-only   # just report status, change nothing
 ```
 
-### Debian / Ubuntu
+Then run it with the generated launcher (or plain Python):
 
 ```bash
-sudo apt install python3-gi python3-gi-cairo gir1.2-pango-1.0 \
+.venv/bin/mdview sample.md
+# or
+python mdview/mdview.py sample.md
+```
+
+<details>
+<summary>Manual install (if you prefer not to run the script)</summary>
+
+```bash
+# Arch Linux
+sudo pacman -S python python-cairo python-gobject pango noto-fonts-cjk ttf-fira-code
+
+# Debian / Ubuntu
+sudo apt install python3 python3-gi python3-gi-cairo gir1.2-pango-1.0 \
                  fonts-noto-cjk fonts-firacode
-pip install mistune pillow watchfiles wcwidth pygments
+
+# macOS (Homebrew)
+brew install pango pygobject3 py3cairo
+
+# then, in a venv that can see the system pycairo/PyGObject:
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
 ```
+</details>
 
-> `pycairo` / `PyGObject` はディストリのパッケージから入れるのが確実です。
-> pip で入れる場合は `girepository` と `cairo` の開発ヘッダが必要です。
+### Optional: math & Mermaid (needs Node.js)
 
-### 数式・Mermaid（任意 / Node.js が必要）
-
-数式と Mermaid 図は外部の Node ツールに描画を委譲します。**未導入でも動作し、その場合は
-ソースを装飾ブロックとして表示します**（フォールバック）。実際の図・数式にするには：
+These features degrade gracefully — **without Node, math/Mermaid blocks are shown
+as styled source blocks** instead of failing. To get real images:
 
 ```bash
-# 数式: MathJax v3（SVG 出力エンジン）。mdview/ 直下に入れると自動で解決されます。
-cd mdview && npm install mathjax-full && cd ..
+# Math: MathJax v3 (bundled tex2svg.mjs resolves it automatically)
+cd mdview && npm install && cd ..
 
-# Mermaid: mermaid-cli（mmdc を PATH に通す）
+# Mermaid: mermaid-cli (puts `mmdc` on PATH)
 npm install -g @mermaid-js/mermaid-cli
 ```
 
-- 数式は同梱の `mdview/tex2svg.mjs`（MathJax v3）で TeX→SVG 変換し、cairosvg で PNG 化します。
-  - KaTeX 本体は HTML 出力のみで画像化できないため、Node ベースの SVG 出力エンジンとして
-    MathJax v3 を採用しています（出力品質は KaTeX と同等のベクター数式）。
-  - `mathjax-full` をグローバル導入した場合は `npm root -g` を自動探索します。任意の場所に
-    入れた場合は `MDVIEW_NODE_PATH` でモジュール解決パスを指定できます。
-- `$$...$$` / ` ```math ` のブロック数式は中央寄せの画像として表示されます。
-- インライン `$...$` は装飾テキストとして表示します（行内画像埋め込みは非対応）。
-- Mermaid は同梱の `mdview/puppeteer-config.json`（`--no-sandbox` 等）を自動で渡すため、
-  Arch でよくある chromium のサンドボックス起動失敗を回避します。設定は
-  `MDVIEW_PUPPETEER_CONFIG`、実行ファイル名は `MDVIEW_MMDC` で上書きできます。
-
-#### 導入状況の診断
-
-数式や Mermaid が画像にならずソースのまま表示される場合は、次で原因を確認できます：
-
-```bash
-python mdview/mdview.py --check
-```
-
-node / cairosvg / mmdc の検出状況と、実際にテスト描画を行った結果（失敗時はエラー内容）を
-表示します。
+Mermaid is rendered by a headless Chromium via Puppeteer; the bundled
+`puppeteer-config.json` passes `--no-sandbox` to avoid the common start-up
+failure on Linux. See [SECURITY.md](SECURITY.md) for the trade-off and when to
+prefer `--safe`.
 
 ---
 
-## 使い方
+## Usage
 
 ```bash
-python mdview/mdview.py README.md
-python mdview/mdview.py ~/notes/todo.md
+mdview README.md                 # interactive viewer (kitty / WezTerm)
+mdview untrusted.md --safe       # don't launch external (math/Mermaid) renderers
+mdview --check                   # diagnose deps, fonts and external tools
+mdview --version
 ```
 
-### オフライン PNG 出力（ヘッドレス検証用）
+### Offline PNG rendering (headless)
 
-TTY や Kitty 対応端末が無い環境でも、全ページを PNG に書き出してレンダリングを確認できます。
+Render every page to a PNG without a TTY — handy for CI or quick checks:
 
 ```bash
-python mdview/mdview.py sample.md --render out.png --width 900
+mdview doc.md --render out.png --width 900
 ```
+
+(With the launcher the command is `mdview`; otherwise `python mdview/mdview.py`.)
 
 ---
 
-## キーバインド
+## Keybindings
 
-| キー | 動作 |
-|------|------|
-| `j` / `↓` | スクロール下（60px） |
-| `k` / `↑` | スクロール上（60px） |
-| `d` / `Ctrl-D` | 半ページ下 |
-| `u` / `Ctrl-U` | 半ページ上 |
-| `g` / `Home` | 先頭へ |
-| `G` / `End` | 末尾へ |
-| `/` | 検索モード（入力 → Enter で確定） |
-| `n` / `N` | 次 / 前の検索結果 |
-| `+` / `=` | ズームイン |
-| `-` | ズームアウト |
-| `0` | ズームをリセット（100%） |
-| `r` | 手動リロード |
-| `t` | TOC（目次）ペインのトグル |
-| `q` | 終了 |
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Scroll down |
+| `k` / `↑` | Scroll up |
+| `d` / `Ctrl-D` | Half page down |
+| `u` / `Ctrl-U` | Half page up |
+| `g` / `Home` | Top |
+| `G` / `End` | Bottom |
+| `/` | Search (type, then Enter) |
+| `n` / `N` | Next / previous match |
+| `+` / `=` | Zoom in |
+| `-` | Zoom out |
+| `0` | Reset zoom (100%) |
+| `r` | Reload |
+| `t` | Toggle table-of-contents pane |
+| `q` | Quit |
 
 ---
 
-## ファイル構成
+## Security
+
+`mdview` is a local viewer; the trust boundary is the file you open. The core
+renderer is safe for untrusted input (no shell injection, escaped markup, HTML
+shown as text). The only elevated risk is the **optional** external renderers
+(Mermaid runs a `--no-sandbox` headless Chromium). When opening files you do not
+trust, pass **`--safe`** to disable them. Full details and reporting instructions
+are in [SECURITY.md](SECURITY.md).
+
+---
+
+## Troubleshooting
+
+Run the doctor — it checks Python imports, font resolution, and the external
+renderers, and live-renders a test of each:
+
+```bash
+mdview --check          # or: ./install.sh --check-only
+```
+
+If math/Mermaid show up as source blocks, `--check` tells you exactly which tool
+(node / cairosvg / mmdc / mathjax-full) is missing and how to install it. Math
+module resolution can be pointed at a custom path with `MDVIEW_NODE_PATH`, the
+Mermaid binary with `MDVIEW_MMDC`, and the browser with `MDVIEW_CHROME`.
+
+---
+
+## Project layout
 
 ```
 mdview/
-├── mdview.py    # エントリポイント・メインループ・初期化・SIGWINCH
-├── parser.py    # Markdown(mistune) → 正規化 AST(Node[])
-├── renderer.py  # AST → PNG（Cairo/Pango、全要素の描画）
-├── kitty.py     # Kitty Graphics Protocol 送受信・端末サイズ取得
-├── layout.py    # 余白・行高の計算ヘルパ
-├── input.py     # raw mode キーボード入力
-├── watcher.py   # watchfiles ラッパー（ホットリロード）
-└── theme.py     # カラースキーム・フォントサイズ・レイアウト定数
-sample.md        # 全要素を含む確認用サンプル
+├── mdview.py    # entry point, main loop, init, SIGWINCH, CLI flags
+├── parser.py    # Markdown (mistune) → normalized AST (Node[])
+├── renderer.py  # AST → PNG (Cairo/Pango); draws every element
+├── external.py  # optional Node renderers (math, Mermaid) + --check doctor
+├── kitty.py     # Kitty Graphics Protocol I/O, terminal size
+├── layout.py    # margin / line-height helpers
+├── input.py     # raw-mode keyboard input
+├── watcher.py   # watchfiles wrapper (hot reload)
+└── theme.py     # color scheme, font sizes, layout constants
+install.sh       # dependency doctor + setup
+sample.md        # a document exercising every element
 ```
 
 ---
 
-## 設計メモ
+## Design notes
 
-- 本文描画はすべて Cairo/Pango で完結（`curses` 不使用、Sixel 不使用）。
-  数式・Mermaid のみ、純 Python で描画できないため任意の Node ツールに委譲する
-  （未導入時はフォールバック表示）。
-- 全ページを 1 枚の PNG にレンダリングし、ビューポート分を Pillow で切り出して送信する。
-- ステータスバー・TOC は毎フレーム合成して 1 枚の画像として貼り付ける。
-- フォント未インストール時はフォールバックし、`stderr` に警告を出す。
+- All body rendering goes through Cairo/Pango (no `curses`, no sixel). Only math
+  and Mermaid are delegated to optional Node tools, because they can't be drawn
+  in pure Python; when those tools are absent, blocks fall back to source.
+- The whole document is rendered to one PNG; the viewport is cropped with Pillow
+  and sent each frame. The status bar and TOC are composited per frame.
+- Premultiplied-alpha conversion uses Pillow's C path (not a Python pixel loop),
+  and the measure/draw passes share Pango layouts, so re-rendering is fast.
+- Missing fonts fall back automatically, with a warning on `stderr`.
+
+---
+
+## License
+
+[MIT](LICENSE) — free and open source. Do whatever you like; attribution is the
+only requirement.

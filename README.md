@@ -7,7 +7,7 @@ A Markdown viewer for **kitty** and **WezTerm** that renders the *whole document
 **Kitty Graphics Protocol**. Headings get real font sizes, code gets real
 syntax highlighting, and math/diagrams become real images.
 
-![demo](docs/demo.png)
+![demo](docs/demo.gif)
 
 [![CI](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)

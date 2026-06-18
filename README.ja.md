@@ -8,7 +8,7 @@ WezTerm / kitty で動作する Markdown ビューア。
 PNG を Kitty Graphics Protocol で貼り付ける。** これにより h1 と h2 で実際のフォント
 サイズが異なる VSCode レベルのリッチ表示を実現する。
 
-![demo](docs/demo.png)
+![demo](docs/demo.gif)
 
 [![CI](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml/badge.svg)](https://github.com/H1rla/markdown-on-kitty/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)

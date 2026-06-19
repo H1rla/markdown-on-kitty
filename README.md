@@ -66,35 +66,15 @@ document, use `mdview`.
 - Fonts (recommended): Noto Sans CJK (Japanese), Fira Code (code) — automatic
   fallback to DejaVu Sans / a generic monospace otherwise
 
-`pycairo` and `PyGObject` are C extensions, so installing them from your distro's
-packages is the reliable path. The installer below resolves and reports all of
-this for you.
-
 ---
 
-## Install
+## Step 0 — install the system libraries first (required)
 
-The quickest path is the bundled installer, which doubles as a dependency doctor
-(it detects your OS, reports exactly what is present/missing with the precise
-command to fix it, and installs the Python packages into a local `.venv`):
-
-```bash
-git clone https://github.com/H1rla/markdown-on-kitty
-cd markdown-on-kitty
-./install.sh            # check + set up .venv + create a launcher
-./install.sh --check-only   # just report status, change nothing
-```
-
-Then run it with the generated launcher (or plain Python):
-
-```bash
-.venv/bin/mdview sample.md
-# or
-python mdview/mdview.py sample.md
-```
-
-<details>
-<summary>Manual install (if you prefer not to run the script)</summary>
+> [!IMPORTANT]
+> `pycairo`, `PyGObject` and `Pango` are **C extensions that are not reliably
+> pip-installable**. They must come from your OS package manager *before* you
+> install mdview by any method below. This is the single most common reason
+> mdview fails to start, so do this first.
 
 ```bash
 # Arch Linux
@@ -104,12 +84,96 @@ sudo pacman -S python python-cairo python-gobject pango noto-fonts-cjk ttf-fira-
 sudo apt install python3 python3-gi python3-gi-cairo gir1.2-pango-1.0 \
                  fonts-noto-cjk fonts-firacode
 
+# Fedora
+sudo dnf install python3 python3-cairo python3-gobject pango \
+                 google-noto-sans-cjk-fonts fira-code-fonts
+
 # macOS (Homebrew)
 brew install pango pygobject3 py3cairo
+```
 
-# then, in a venv that can see the system pycairo/PyGObject:
+Then **verify** they import before going further — this one line should print
+`system libs OK`:
+
+```bash
+python3 -c "import cairo, gi; gi.require_version('Pango','1.0'); \
+from gi.repository import Pango, PangoCairo; print('system libs OK')"
+```
+
+If that errors, fix the system packages first; no install method below will work
+until it prints `system libs OK`.
+
+---
+
+## Install
+
+Pick one of the two paths. **Option A** (`uv`) installs a global `mdview`
+command; **Option B** (`install.sh`) sets up a local `.venv` and doubles as a
+dependency doctor.
+
+### Option A — `uv` (global command)
+
+For people who use [uv](https://docs.astral.sh/uv/). Installs straight from Git:
+
+```bash
+uv tool install git+https://github.com/H1rla/markdown-on-kitty
+```
+
+> [!NOTE]
+> `uv tool` installs into an **isolated** environment that does **not** see the
+> system `pycairo`/`PyGObject` from Step 0. Point `PYTHONPATH` at your distro's
+> packages so mdview can find them:
+>
+> ```bash
+> # resolves the directory that holds the system cairo/gi
+> export MDVIEW_SYS="$(python3 -c 'import cairo,os;print(os.path.dirname(os.path.dirname(cairo.__file__)))')"
+> PYTHONPATH="$MDVIEW_SYS" mdview sample.md
+> ```
+>
+> To avoid typing it every time, add a shell alias to your `~/.bashrc` /
+> `~/.zshrc`:
+>
+> ```bash
+> alias mdview='PYTHONPATH="$(python3 -c "import cairo,os;print(os.path.dirname(os.path.dirname(cairo.__file__)))")" mdview'
+> ```
+
+> [!WARNING]
+> The distribution name on PyPI, `mdview`, is an **unrelated** project. Do **not**
+> `pip install mdview` / `uv tool install mdview` — that pulls the wrong package.
+> Always install from the Git URL above.
+
+### Option B — `install.sh` (local `.venv` + doctor)
+
+For people who prefer a self-contained checkout. The installer detects your OS,
+reports exactly what is present/missing with the precise command to fix it, and
+installs the Python packages into a local `.venv`:
+
+```bash
+git clone https://github.com/H1rla/markdown-on-kitty
+cd markdown-on-kitty
+./install.sh            # check + set up .venv + create a launcher
+./install.sh --check-only   # just report status, change nothing
+```
+
+Then run it with the generated launcher:
+
+```bash
+.venv/bin/mdview sample.md
+```
+
+If `~/.local/bin` is on your `PATH`, the script also offers to symlink a global
+`mdview` command (it asks first).
+
+<details>
+<summary>Manual setup (no script, no uv)</summary>
+
+After Step 0, create a venv that can see the system pycairo/PyGObject and install
+the pip packages:
+
+```bash
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m mdview sample.md
 ```
 </details>
 
@@ -150,7 +214,8 @@ Render every page to a PNG without a TTY — handy for CI or quick checks:
 mdview doc.md --render out.png --width 900
 ```
 
-(With the launcher the command is `mdview`; otherwise `python mdview/mdview.py`.)
+(If you installed with `install.sh` without the global symlink, the command is
+`.venv/bin/mdview`; from a manual checkout you can also use `python -m mdview`.)
 
 ---
 
@@ -206,17 +271,20 @@ Mermaid binary with `MDVIEW_MMDC`, and the browser with `MDVIEW_CHROME`.
 
 ```
 mdview/
-├── mdview.py    # entry point, main loop, init, SIGWINCH, CLI flags
-├── parser.py    # Markdown (mistune) → normalized AST (Node[])
-├── renderer.py  # AST → PNG (Cairo/Pango); draws every element
-├── external.py  # optional Node renderers (math, Mermaid) + --check doctor
-├── kitty.py     # Kitty Graphics Protocol I/O, terminal size
-├── layout.py    # margin / line-height helpers
-├── input.py     # raw-mode keyboard input
-├── watcher.py   # watchfiles wrapper (hot reload)
-└── theme.py     # color scheme, font sizes, layout constants
-install.sh       # dependency doctor + setup
-sample.md        # a document exercising every element
+├── __init__.py   # package marker, single source of __version__
+├── __main__.py   # enables `python -m mdview`
+├── mdview.py     # entry point, main loop, init, SIGWINCH, CLI flags
+├── parser.py     # Markdown (mistune) → normalized AST (Node[])
+├── renderer.py   # AST → PNG (Cairo/Pango); draws every element
+├── external.py   # optional Node renderers (math, Mermaid) + --check doctor
+├── kitty.py      # Kitty Graphics Protocol I/O, terminal size
+├── layout.py     # margin / line-height helpers
+├── input.py      # raw-mode keyboard input
+├── watcher.py    # watchfiles wrapper (hot reload)
+└── theme.py      # color scheme, font sizes, layout constants
+install.sh        # dependency doctor + setup
+pyproject.toml    # packaging (build-system, entry point) + ruff/pytest config
+sample.md         # a document exercising every element
 ```
 
 ---

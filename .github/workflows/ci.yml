@@ -34,7 +34,7 @@ jobs:
         run: .venv/bin/pytest
 
       - name: Headless render smoke
-        run: .venv/bin/python mdview/mdview.py sample.md --render /tmp/out.png --width 900
+        run: .venv/bin/python -m mdview sample.md --render /tmp/out.png --width 900
 
       - name: Dependency doctor (install.sh)
         run: bash install.sh --check-only

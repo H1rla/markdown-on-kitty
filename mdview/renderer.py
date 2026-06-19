@@ -24,9 +24,9 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Pango, PangoCairo  # noqa: E402
 from PIL import Image  # noqa: E402
 
-import external  # noqa: E402
-import layout as L  # noqa: E402
-from theme import FONT, FONT_FALLBACK, LAYOUT, SIZE, THEME  # noqa: E402
+from . import external  # noqa: E402
+from . import layout as L  # noqa: E402
+from .theme import FONT, FONT_FALLBACK, LAYOUT, SIZE, THEME  # noqa: E402
 
 try:
     from pygments import lex

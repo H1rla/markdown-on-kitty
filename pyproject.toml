@@ -1,9 +1,75 @@
-# Tooling configuration only (lint + tests).
+# ---------------------------------------------------------------------------
+# Packaging
+# ---------------------------------------------------------------------------
+# mdview can be installed as a package (e.g. `uv tool install
+# git+https://github.com/H1rla/markdown-on-kitty`), which puts an `mdview`
+# command on PATH.
 #
-# mdview is intentionally run as a script (`python mdview/mdview.py`), not
-# installed as a package, so this file deliberately has no [build-system] and no
-# entry points — it only configures ruff and pytest.
+# IMPORTANT: this still depends on system libraries that are NOT pip-installable
+# — pycairo, PyGObject and Pango must come from your distro (see README). They
+# are deliberately omitted from [project.dependencies] because building them in
+# an isolated venv fails on most systems; install them first with your package
+# manager, then install this. The optional math/Mermaid renderers additionally
+# need Node.js.
+#
+# The distribution is named `markdown-on-kitty` because the name `mdview` on
+# PyPI is an unrelated project. The command it installs is still `mdview`.
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "markdown-on-kitty"
+version = "0.1.0"
+description = "A pixel-perfect Markdown viewer for the terminal (kitty / WezTerm, Kitty Graphics Protocol)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "H1rla" }]
+keywords = ["markdown", "terminal", "kitty", "wezterm", "viewer", "cairo", "pango"]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Terminals",
+]
+
+# NOTE: pycairo / PyGObject are intentionally NOT listed here — install them
+# from your distro (they are C extensions that need system libraries). See
+# README for the exact command on your OS.
+dependencies = [
+    "mistune>=3.0",
+    "Pillow",
+    "watchfiles",
+    "wcwidth",
+    "Pygments",
+    "cairosvg",
+]
+
+[project.urls]
+Homepage = "https://github.com/H1rla/markdown-on-kitty"
+Repository = "https://github.com/H1rla/markdown-on-kitty"
+Issues = "https://github.com/H1rla/markdown-on-kitty/issues"
+
+[project.scripts]
+mdview = "mdview.mdview:main"
+
+# Include the optional Node helper assets (math / Mermaid) inside the package so
+# the external renderers can find them at runtime; they are resolved relative to
+# the package directory.
+[tool.hatch.build.targets.wheel]
+packages = ["mdview"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"mdview/tex2svg.mjs" = "mdview/tex2svg.mjs"
+"mdview/puppeteer-config.json" = "mdview/puppeteer-config.json"
+"mdview/package.json" = "mdview/package.json"
+
+# ---------------------------------------------------------------------------
+# Tooling (lint + tests)
+# ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py310"

@@ -13,14 +13,15 @@ import signal
 import sys
 import threading
 
-import input as keyinput
-import kitty
-from parser import parse
-from renderer import Renderer
-from theme import LAYOUT
-from watcher import start_watching
+from . import input as keyinput
+from . import kitty
+from .parser import parse
+from .renderer import Renderer
+from .theme import LAYOUT
+from .watcher import start_watching
 
-__version__ = "0.1.0"
+from . import __version__
+
 
 
 # --------------------------------------------------------------------------
@@ -94,7 +95,7 @@ class App:
     # ---------------- フレーム合成 ----------------
     def compose_frame(self, view_w: int, view_h: int) -> bytes:
         from PIL import Image
-        from theme import THEME
+        from .theme import THEME
 
         bar_h = LAYOUT["status_bar_height"]
         content_h = max(1, view_h - bar_h)
@@ -347,7 +348,7 @@ def main():
     args = ap.parse_args()
 
     if args.check:
-        import external
+        from . import external
         print(external.diagnose())
         return
 

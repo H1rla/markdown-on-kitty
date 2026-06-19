@@ -1,7 +1,7 @@
 import os
 
-import parser
-from renderer import Renderer
+from mdview import parser
+from mdview.renderer import Renderer
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,7 +27,7 @@ def test_render_is_deterministic():
 
 
 def test_safe_mode_never_calls_external(monkeypatch):
-    import external
+    from mdview import external
 
     def boom(*a, **k):
         raise AssertionError("external renderer must not run in --safe mode")

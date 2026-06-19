@@ -306,8 +306,8 @@ def diagnose() -> str:
     lines.append("")
     lines.append("[フォント解決]")
     try:
-        from renderer import _available_font_families
-        from theme import FONT
+        from .renderer import _available_font_families
+        from .theme import FONT
         avail = _available_font_families()
         for role, name in FONT.items():
             mark = "✓" if name in avail else "⚠"
